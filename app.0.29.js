@@ -6,7 +6,7 @@ const state = {
   sensorMeta: [],
   adafruitUsername: "",
   headerTitle: "",
-  appVersion: "0.28",
+  appVersion: "0.29",
   showDetails: false,
   isPressing: false,
   longPressMs: 3000,
@@ -144,7 +144,7 @@ function buildSensors() {
 function resizeCanvas() {
   state.dpr = Math.max(1, window.devicePixelRatio || 1);
   const isPhone = window.innerWidth <= 600;
-  state.aqiSize = isPhone ? 48 : 60;
+  state.aqiSize = isPhone ? 56 : 60;
   state.headerHeight = isPhone ? 76 : 96;
   state.dataHeight = isPhone ? 78 : 70;
   state.canvasWidth = Math.min(1080, window.innerWidth);
@@ -159,6 +159,9 @@ function resizeCanvas() {
 
 function bindPressHandlers() {
   let pressTimer = null;
+  function isControlEventTarget(target) {
+    return Boolean(target && target.closest && target.closest(".controls"));
+  }
 
   function startPress() {
     state.isPressing = true;
@@ -182,6 +185,9 @@ function bindPressHandlers() {
   const pressTarget = document.body;
 
   pressTarget.addEventListener("pointerdown", (event) => {
+    if (isControlEventTarget(event.target)) {
+      return;
+    }
     event.preventDefault();
     if (window.Tone && Tone.context && Tone.context.state !== "running") {
       Tone.start().catch(() => {});
@@ -190,6 +196,9 @@ function bindPressHandlers() {
   });
 
   pressTarget.addEventListener("pointerup", (event) => {
+    if (isControlEventTarget(event.target)) {
+      return;
+    }
     event.preventDefault();
     endPress();
   });
@@ -200,6 +209,9 @@ function bindPressHandlers() {
   pressTarget.addEventListener(
     "touchstart",
     (event) => {
+      if (isControlEventTarget(event.target)) {
+        return;
+      }
       event.preventDefault();
       if (window.Tone && Tone.context && Tone.context.state !== "running") {
         Tone.start().catch(() => {});
@@ -212,6 +224,9 @@ function bindPressHandlers() {
   pressTarget.addEventListener(
     "touchend",
     (event) => {
+      if (isControlEventTarget(event.target)) {
+        return;
+      }
       event.preventDefault();
       endPress();
     },
@@ -221,6 +236,9 @@ function bindPressHandlers() {
   pressTarget.addEventListener(
     "touchcancel",
     (event) => {
+      if (isControlEventTarget(event.target)) {
+        return;
+      }
       event.preventDefault();
       endPress();
     },
@@ -256,12 +274,14 @@ function setupAudioControls() {
   }
 
   if (timeScrubControl) {
-    timeScrubControl.value = `${audioState.timeScrubMinutes}`;
-    timeScrubControl.addEventListener("change", () => {
+    const applyTimeScrubValue = () => {
       const value = parseInt(timeScrubControl.value, 10);
       audioState.timeScrubMinutes = clamp(Number.isFinite(value) ? value : 4, 1, 12);
       refreshPlaybackLoop();
-    });
+    };
+    timeScrubControl.value = `${audioState.timeScrubMinutes}`;
+    timeScrubControl.addEventListener("change", applyTimeScrubValue);
+    timeScrubControl.addEventListener("input", applyTimeScrubValue);
   }
 
   playButton.addEventListener("click", async (event) => {
@@ -1093,7 +1113,12 @@ function drawHeader() {
   ctx.textBaseline = "alphabetic";
   ctx.fillText(state.headerTitle, state.leftMargin, titleY);
 
-  // Version text removed; build tag handles visibility on long press.
+  if (state.isPressing) {
+    const titleWidth = ctx.measureText(state.headerTitle || "").width;
+    ctx.font = "12px Arial";
+    ctx.fillStyle = "#c9c9c9";
+    ctx.fillText(`v${state.appVersion}`, state.leftMargin + titleWidth + 10, titleY);
+  }
 }
 
 function extractNumber(key) {
@@ -1323,11 +1348,15 @@ class SensorDrawer {
       ctx.globalAlpha = 1;
     }
 
-    ctx.font = "32px Arial";
+    const isPhone = window.innerWidth <= 600;
+    const aqiFontSize = isPhone ? (aqi >= 100 ? 24 : 28) : aqi >= 100 ? 28 : 32;
+    ctx.font = `${aqiFontSize}px Arial`;
     ctx.fillStyle = stale ? "#e0e0e0" : "#0000ff";
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
-    ctx.fillText(aqi.toString(), x, y + 10);
+    const numberX = aqi >= 100 ? x - 1 : x;
+    const numberY = isPhone ? y + 9 : y + 10;
+    ctx.fillText(aqi.toString(), numberX, numberY);
 
     ctx.font = "24px Arial";
     ctx.fillStyle = stale ? "#bdbdbd" : "#ffffff";

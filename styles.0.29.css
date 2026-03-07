@@ -18,19 +18,7 @@ body {
 }
 
 .build-marker {
-  position: fixed;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  background: rgba(40, 40, 40, 0.9);
-  padding: 4px 8px;
-  border-radius: 6px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  pointer-events: none;
+  display: none;
 }
 
 .show-details .build-marker {
@@ -69,6 +57,7 @@ main {
   justify-content: center;
   width: calc(100% - 24px);
   max-width: 980px;
+  touch-action: auto;
 }
 
 #play-button {

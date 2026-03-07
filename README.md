@@ -113,7 +113,7 @@ Each sensor shows row of data with the example being two rows.
 
 If you call the Adafruit IO too often, you will get a CORS error. Since my sensors push data up only every minute, I have a timer which will also look for data every minute.
 
-## Audio playback (v0.28)
+## Audio playback (v0.29)
 
 The current build adds a Tone.js `PolySynth` mode that can play AQ history over time.
 
@@ -197,3 +197,4 @@ Add a `.htaccess` file in the same folder as `index.html` to prevent the HTML fr
 - 0.11: show version number on long-press; AQI Nodes title; tighter layout, smaller AQI square; per-sensor update/ID under location on long-press
 - 0.27: web deployment build (no sound playback)
 - 0.28: first build with sound playback enabled
+- 0.29: phone interaction fixes for `Play` and `Time Scrub`; build version moved beside title; larger phone AQI squares with safer 3-digit number spacing
