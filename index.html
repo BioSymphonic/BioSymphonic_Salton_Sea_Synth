@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Salton Sea Synth</title>
+  <link rel="stylesheet" href="styles.0.28.css">
+  <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
+  <script src="app.0.28.js" defer></script>
+</head>
+
+<body>
+  <main>
+    <div class="build-marker">Build v0.28</div>
+    <canvas id="aqi-canvas" aria-label="AQI display"></canvas>
+    <div class="controls">
+      <button id="play-button" type="button" aria-pressed="false">Play</button>
+      <label class="control-field">
+        Time Scrub
+        <select id="time-scrub-control">
+          <option value="1">1 min</option>
+          <option value="2">2 min</option>
+          <option value="4" selected>4 min</option>
+          <option value="8">8 min</option>
+          <option value="12">12 min</option>
+        </select>
+      </label>
+      <div class="accrued-readout" id="accrued-duration">Accrued Duration: 0m</div>
+    </div>
+  </main>
+</body>
+
+</html>

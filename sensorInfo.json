@@ -1,0 +1,8 @@
+{
+  "title": "Salton Sea Synth",
+  "adafruitUsername" : "skildall",
+  "sensors": {
+    "sensorIDs": [1017, 810, 1003, 971, 881, 897, 1167, 1099],
+    "rooms": ["Tool Camp", "Mimos", "Chiba", "Freeside", "Co-Lab", "Zig Zag", "Pluto", "Vulcan"]
+  }
+}
