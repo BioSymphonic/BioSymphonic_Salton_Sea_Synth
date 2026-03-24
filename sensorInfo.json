@@ -1,8 +1,15 @@
 {
   "title": "Salton Sea Synth",
-  "adafruitUsername" : "skildall",
+  "adafruitUsername": "skildall",
+  "palette": {
+    "sage": "#9caf88",
+    "yellow": "#e7d86a",
+    "brown": "#7a5c3c",
+    "white": "#f4f1e8",
+    "orange": "#d97a2b"
+  },
   "sensors": {
-    "sensorIDs": [1017, 810, 1003, 971, 881, 897, 1167, 1099],
-    "rooms": ["Tool Camp", "Mimos", "Chiba", "Freeside", "Co-Lab", "Zig Zag", "Pluto", "Vulcan"]
+    "sensorIDs": [961, 621, 897, 1037, 1099, 1475],
+    "rooms": ["BBAC", "LiT Lair", "Zig Zag", "Sunflower Lab", "Vulcan", "Mercury"]
   }
 }

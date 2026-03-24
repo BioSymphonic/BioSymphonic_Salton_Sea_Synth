@@ -1,32 +1,39 @@
 <!DOCTYPE html>
-<html lang="">
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Salton Sea Synth</title>
-  <link rel="stylesheet" href="styles.0.29.css?v=0.29">
+  <link rel="stylesheet" href="styles.0.30.css?v=0.30">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
-  <script src="app.0.29.js?v=0.29" defer></script>
+  <script src="app.0.30.js?v=0.30" defer></script>
 </head>
 
 <body>
-  <main>
-    <div class="build-marker">Build v0.29</div>
-    <canvas id="aqi-canvas" aria-label="AQI display"></canvas>
-    <div class="controls">
-      <button id="play-button" type="button" aria-pressed="false">Play</button>
-      <label class="control-field">
-        Time Scrub
-        <select id="time-scrub-control">
-          <option value="1">1 min</option>
-          <option value="2">2 min</option>
-          <option value="4" selected>4 min</option>
-          <option value="8">8 min</option>
-          <option value="12">12 min</option>
-        </select>
-      </label>
-      <div class="accrued-readout" id="accrued-duration">Accrued Duration: 0m</div>
+  <main class="app-shell">
+    <div id="sketch-root" aria-label="Salton Sea Synth visualization"></div>
+    <div class="bottom-strip">
+      <div class="transport-row">
+        <button id="transport-button" class="transport-button" type="button" aria-pressed="false">Play</button>
+      </div>
+      <div class="hud">
+        <label class="hud-field hud-slider-field">
+          <span>Reverb</span>
+          <div class="slider-stack">
+            <input id="reverb-control" type="range" min="0" max="100" value="8" aria-label="Reverb">
+          </div>
+        </label>
+        <label class="hud-field hud-slider-field">
+          <span>Speed</span>
+          <div class="slider-stack">
+            <input id="bpm-control" type="range" min="60" max="180" value="90" aria-label="Speed">
+            <div class="slider-readout" id="bpm-readout">90 BPM</div>
+          </div>
+        </label>
+      </div>
+      <div class="footer-readout" id="accrued-duration">Accrued Duration: 0m</div>
     </div>
   </main>
 </body>
