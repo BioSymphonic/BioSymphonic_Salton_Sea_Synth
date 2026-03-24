@@ -198,3 +198,5 @@ Add a `.htaccess` file in the same folder as `index.html` to prevent the HTML fr
 - 0.27: web deployment build (no sound playback)
 - 0.28: first build with sound playback enabled
 - 0.29: phone interaction fixes for `Play` and `Time Scrub`; build version moved beside title; larger phone AQI squares with safer 3-digit number spacing
+- 0.30: move to the current p5.js card UI with bottom HUD controls; restore the older drone-style Tone.js playback model inside the new visuals; add ongoing graph point accrual and a moving playback head; add manual play/pause transport control
+- 0.31: add primary/master track selection by clicking the AQ block; add a gray master-track indicator around the AQ value; tie sweep timing to BPM relative to the master track; refine graph spacing and playback-head behavior

@@ -81,6 +81,9 @@ const visualState = {
   particles: [],
   graphPointsBySensorId: {},
   sweepStartedAtMs: 0,
+  aqHitboxes: [],
+  primaryTrackSensorID: null,
+  canvasEl: null,
 };
 
 function init() {
@@ -1182,6 +1185,11 @@ new p5((p) => {
   p.setup = () => {
     const canvas = p.createCanvas(p.windowWidth, getCanvasHeight());
     canvas.parent("sketch-root");
+    visualState.canvasEl = canvas.elt;
+    visualState.canvasEl.addEventListener("pointerdown", (event) => {
+      const rect = visualState.canvasEl.getBoundingClientRect();
+      handleCanvasPress(event.clientX - rect.left, event.clientY - rect.top);
+    });
     p.noStroke();
     init();
     p.resizeCanvas(p.windowWidth, getCanvasHeight());
@@ -1194,6 +1202,7 @@ new p5((p) => {
   p.draw = () => {
     drawSketch(p);
   };
+
 });
 
 function getCanvasHeight() {
@@ -1253,6 +1262,7 @@ function drawSensorPanels(p) {
   );
   const titleColor = hexToRgb(state.palette.white);
   const bodyColor = hexToRgb(state.palette.brown);
+  visualState.aqHitboxes = [];
 
   p.fill(titleColor.r, titleColor.g, titleColor.b, 242);
   p.textAlign(p.LEFT, p.TOP);
@@ -1267,6 +1277,7 @@ function drawSensorPanels(p) {
   const visibleDrawers = state.sensorDrawers
     .map((drawer, index) => ({ drawer, index }))
     .filter(({ drawer }) => !drawer.isStale());
+  const primaryTrackIndex = getPrimaryTrackIndex();
 
   visibleDrawers.forEach(({ drawer, index }, visibleIndex) => {
     const y = state.headerHeight + 4 + visibleIndex * rowHeight;
@@ -1280,6 +1291,21 @@ function drawSensorPanels(p) {
 
     p.fill(panelColor.r, panelColor.g, panelColor.b, 230);
     drawRoundedRect(p, marginX + 10, y + 12, 84, panelHeight - 24, 8);
+    visualState.aqHitboxes.push({
+      sensorID: drawer.sensorID,
+      x: marginX + 10,
+      y: y + 12,
+      width: 84,
+      height: panelHeight - 24,
+    });
+
+    if (index === primaryTrackIndex) {
+      p.noFill();
+      p.stroke(132, 132, 132, 220);
+      p.strokeWeight(2);
+      drawRoundedRect(p, marginX + 22, y + 22, 60, panelHeight - 44, 8);
+      p.noStroke();
+    }
 
     p.fill(state.palette.white);
     p.textAlign(p.CENTER, p.CENTER);
@@ -1315,8 +1341,8 @@ function drawHistoryWave(p, sensorID, x, y, width, height, panelColor) {
   const boxHeight = Math.max(24, height);
   const waveTop = y;
   const waveBottom = y + boxHeight;
-  const dataTop = waveTop + 4;
-  const dataBottom = waveBottom - 4;
+  const dataTop = waveTop + 10;
+  const dataBottom = waveBottom - 10;
 
   p.push();
   p.noStroke();
@@ -1346,30 +1372,18 @@ function drawHistoryWave(p, sensorID, x, y, width, height, panelColor) {
     maxValue += 1;
   }
 
+  const wavePoints = getWavePoints(samples, x, width, dataTop, dataBottom, minValue, maxValue);
   p.stroke(panelColor.r, panelColor.g, panelColor.b, 210);
   p.strokeWeight(2);
   const markerFractions = getMarkerFractions(samples.length);
-  if (samples.length <= 1) {
-    const py = dataBottom - mapRange(samples[0].value, minValue, maxValue, 0, dataBottom - dataTop);
-    p.line(x, py, x + width, py);
-  } else {
-    p.beginShape();
-    const firstY = dataBottom - mapRange(samples[0].value, minValue, maxValue, 0, dataBottom - dataTop);
-    p.vertex(x, firstY);
-    for (let i = 0; i < samples.length; i += 1) {
-      const px = x + markerFractions[i] * width;
-      const py = dataBottom - mapRange(samples[i].value, minValue, maxValue, 0, dataBottom - dataTop);
-      p.vertex(px, py);
-    }
-    const lastY =
-      dataBottom - mapRange(samples[samples.length - 1].value, minValue, maxValue, 0, dataBottom - dataTop);
-    p.vertex(x + width, lastY);
-    p.endShape();
+  p.beginShape();
+  for (let i = 0; i < wavePoints.length; i += 1) {
+    p.vertex(wavePoints[i].x, wavePoints[i].y);
   }
+  p.endShape();
 
   const headPhase = getVisualSweepPhase(sensorID, findSensorIndex(sensorID), samples.length);
-  const headX = x + headPhase * width;
-  const headY = getSweepHeadY(samples, headPhase, minValue, maxValue, waveTop, waveBottom);
+  const headState = getSweepHeadState(wavePoints, headPhase);
 
   p.noStroke();
   p.fill(236, 229, 196, 245);
@@ -1379,8 +1393,15 @@ function drawHistoryWave(p, sensorID, x, y, width, height, panelColor) {
     p.circle(px, py, 8);
   }
 
+  p.push();
+  p.translate(headState.x, headState.y);
+  p.rectMode(p.CENTER);
+  p.noStroke();
   p.fill(232, 224, 178, 235);
-  drawRoundedRect(p, headX - 5, clamp(headY - 12, dataTop - 2, dataBottom - 22), 10, 24, 3);
+  p.rect(0, 0, 12, 20, 3);
+  p.fill(246, 239, 216, 180);
+  p.rect(0, -4, 6, 6, 2);
+  p.pop();
 
   p.drawingContext.restore();
   p.pop();
@@ -1397,16 +1418,64 @@ function getMarkerFractions(sampleCount) {
   return fractions;
 }
 
-function getSweepHeadY(samples, sweepPhase, minValue, maxValue, waveTop, waveBottom) {
+function getWavePoints(samples, x, width, dataTop, dataBottom, minValue, maxValue) {
   if (samples.length <= 1) {
-    return waveBottom - mapRange(samples[0].value, minValue, maxValue, 0, waveBottom - waveTop);
+    const y = dataBottom - mapRange(samples[0].value, minValue, maxValue, 0, dataBottom - dataTop);
+    return [
+      { x, y },
+      { x: x + width, y },
+    ];
   }
-  const scaled = sweepPhase * (samples.length - 1);
-  const leftIndex = Math.floor(scaled);
-  const rightIndex = Math.min(samples.length - 1, leftIndex + 1);
-  const localPhase = scaled - leftIndex;
-  const value = samples[leftIndex].value + (samples[rightIndex].value - samples[leftIndex].value) * localPhase;
-  return waveBottom - mapRange(value, minValue, maxValue, 0, waveBottom - waveTop);
+
+  const markerFractions = getMarkerFractions(samples.length);
+  const points = [];
+  const firstY = dataBottom - mapRange(samples[0].value, minValue, maxValue, 0, dataBottom - dataTop);
+  points.push({ x, y: firstY });
+  for (let i = 0; i < samples.length; i += 1) {
+    const px = x + markerFractions[i] * width;
+    const py = dataBottom - mapRange(samples[i].value, minValue, maxValue, 0, dataBottom - dataTop);
+    points.push({ x: px, y: py });
+  }
+  const lastY =
+    dataBottom - mapRange(samples[samples.length - 1].value, minValue, maxValue, 0, dataBottom - dataTop);
+  points.push({ x: x + width, y: lastY });
+  return points;
+}
+
+function getSweepHeadState(wavePoints, sweepPhase) {
+  if (!wavePoints.length) {
+    return { x: 0, y: 0, angle: 0 };
+  }
+  if (wavePoints.length === 1) {
+    return { x: wavePoints[0].x, y: wavePoints[0].y, angle: 0 };
+  }
+
+  const minX = wavePoints[0].x;
+  const maxX = wavePoints[wavePoints.length - 1].x;
+  const targetX = minX + clamp(sweepPhase, 0, 1) * (maxX - minX);
+
+  for (let i = 1; i < wavePoints.length; i += 1) {
+    const left = wavePoints[i - 1];
+    const right = wavePoints[i];
+    if (targetX > right.x && i < wavePoints.length - 1) {
+      continue;
+    }
+    const span = Math.max(1e-6, right.x - left.x);
+    const localT = clamp((targetX - left.x) / span, 0, 1);
+    return {
+      x: left.x + (right.x - left.x) * localT,
+      y: left.y + (right.y - left.y) * localT,
+      angle: Math.atan2(right.y - left.y, right.x - left.x),
+    };
+  }
+
+  const tailLeft = wavePoints[wavePoints.length - 2];
+  const tailRight = wavePoints[wavePoints.length - 1];
+  return {
+    x: tailRight.x,
+    y: tailRight.y,
+    angle: Math.atan2(tailRight.y - tailLeft.y, tailRight.x - tailLeft.x),
+  };
 }
 
 function getPointIndexForHistory(playhead, historyLength) {
@@ -1440,12 +1509,45 @@ function getPlaybackPointIndex(playbackData, sampleCount) {
 }
 
 function getVisualSweepPhase(sensorID, sensorIndex, sampleCount) {
-  const points = visualState.graphPointsBySensorId[sensorID] || [];
+  const primaryTrackIndex = getPrimaryTrackIndex();
   const pointFactor = clamp(sampleCount / 18, 0.9, 2.6);
-  const sensorFactor = 1 + ((Math.max(0, sensorIndex) % 5) * 0.22);
-  const cycleMs = 18000 * pointFactor * sensorFactor;
+  const beatsPerCycle = 16;
+  const masterCycleMs = (60000 / Math.max(60, audioState.bpm)) * beatsPerCycle * pointFactor;
+  const relativeOffset = Math.max(0, sensorIndex) - Math.max(0, primaryTrackIndex);
+  const sensorFactor = 1 + Math.abs(relativeOffset) * 0.18;
+  const cycleMs = masterCycleMs * sensorFactor;
   const elapsedMs = Math.max(0, Date.now() - visualState.sweepStartedAtMs + Math.max(0, sensorIndex) * 350);
   return (elapsedMs % cycleMs) / cycleMs;
+}
+
+function getPrimaryTrackIndex() {
+  if (visualState.primaryTrackSensorID !== null) {
+    const selectedIndex = findSensorIndex(visualState.primaryTrackSensorID);
+    if (selectedIndex >= 0 && !state.sensorDrawers[selectedIndex].isStale()) {
+      return selectedIndex;
+    }
+  }
+  const activeIndices = getActiveSensorIndices();
+  if (activeIndices.length) {
+    return activeIndices[0];
+  }
+  return state.sensorDrawers.length ? 0 : -1;
+}
+
+function handleCanvasPress(x, y) {
+  for (let i = 0; i < visualState.aqHitboxes.length; i += 1) {
+    const hitbox = visualState.aqHitboxes[i];
+    if (
+      x >= hitbox.x &&
+      x <= hitbox.x + hitbox.width &&
+      y >= hitbox.y &&
+      y <= hitbox.y + hitbox.height
+    ) {
+      visualState.primaryTrackSensorID = hitbox.sensorID;
+      return true;
+    }
+  }
+  return false;
 }
 
 function drawEnergyBursts(p) {
