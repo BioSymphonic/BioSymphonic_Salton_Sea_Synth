@@ -123,7 +123,7 @@ function setupHudControls() {
     audioState.bpmControlEl.value = `${audioState.bpm}`;
     const applyBpmValue = () => {
       const value = parseInt(audioState.bpmControlEl.value, 10);
-      audioState.bpm = clamp(Number.isFinite(value) ? value : 90, 30, 180);
+      audioState.bpm = clamp(Number.isFinite(value) ? value : 90, 30, 90);
       updateBpmReadout();
       refreshPlaybackLoop();
     };
@@ -430,46 +430,62 @@ function playbackTick(time, stepSeconds) {
     return;
   }
 
-  const sensorIndex = getPrimaryTrackIndex();
-  if (sensorIndex < 0 || sensorIndex >= state.sensorIDs.length) {
-    audioState.stepIndex += 1;
-    return;
-  }
-  const sensorID = state.sensorIDs[sensorIndex];
-  const samples = getPlaybackSamples(sensorID);
-  if (!samples.length) {
-    audioState.stepIndex += 1;
-    return;
-  }
-  const playbackState = getTrackPlaybackState(sensorID);
-  const playhead = clamp(playbackState.pointIndex, 0, samples.length - 1);
-  const currentSample = samples[playhead] || samples[samples.length - 1];
-  if (!currentSample) {
-    audioState.stepIndex += 1;
-    return;
-  }
   const synth = audioState.synths.lead;
   if (!synth) {
     audioState.stepIndex += 1;
     return;
   }
-  const currentValue = currentSample.value;
-  const midi = getMasterTrackMidi(sensorID, sensorIndex, currentValue);
-  const note = Tone.Frequency(midi, "midi").toNote();
-  const velocity = 0.18 + clamp((currentValue - state.aqMinVal) / Math.max(1, state.aqMaxVal - state.aqMinVal), 0, 1) * 0.18;
-  const durationSeconds = Math.min(stepSeconds * 0.55, 0.22);
-  synth.triggerAttackRelease(note, durationSeconds, time, velocity);
 
-  audioState.playheadBySensorId[sensorID] = playhead;
-  audioState.activeSensorIndex = sensorIndex;
-  pulseSensor(sensorIndex);
-  audioState.lastPlaybackBySensorId[sensorID] = {
-    ts: Date.now(),
-    notes: [note],
-    historyLength: samples.length,
-    playhead,
-    pointIndex: playhead,
-  };
+  const activeIndices = getActiveSensorIndices().filter((index) => {
+    const sensorID = state.sensorIDs[index];
+    return getPlaybackSamples(sensorID).length > 0;
+  });
+  const candidateIndices = activeIndices.length ? activeIndices : state.sensorIDs.map((_, index) => index);
+  const noteEvents = [];
+  const now = Date.now();
+
+  for (let i = 0; i < candidateIndices.length; i += 1) {
+    const sensorIndex = candidateIndices[i];
+    const sensorID = state.sensorIDs[sensorIndex];
+    const samples = getPlaybackSamples(sensorID);
+    if (!samples.length) {
+      continue;
+    }
+
+    const playbackState = getTrackPlaybackState(sensorID, now);
+    const playhead = clamp(playbackState.pointIndex, 0, samples.length - 1);
+    const currentSample = samples[playhead] || samples[samples.length - 1];
+    if (!currentSample) {
+      continue;
+    }
+
+    const currentValue = currentSample.value;
+    const midi = getMasterTrackMidi(sensorID, sensorIndex, currentValue);
+    const note = Tone.Frequency(midi, "midi").toNote();
+    const velocity = 0.18 + clamp((currentValue - state.aqMinVal) / Math.max(1, state.aqMaxVal - state.aqMinVal), 0, 1) * 0.18;
+
+    noteEvents.push({ note, velocity });
+    audioState.playheadBySensorId[sensorID] = playhead;
+    pulseSensor(sensorIndex);
+    audioState.lastPlaybackBySensorId[sensorID] = {
+      ts: now,
+      notes: [note],
+      historyLength: samples.length,
+      playhead,
+      pointIndex: playhead,
+    };
+  }
+
+  if (!noteEvents.length) {
+    audioState.stepIndex += 1;
+    return;
+  }
+
+  const durationSeconds = Math.min(stepSeconds * 0.55, 0.22);
+  for (let i = 0; i < noteEvents.length; i += 1) {
+    synth.triggerAttackRelease(noteEvents[i].note, durationSeconds, time, noteEvents[i].velocity);
+  }
+  audioState.activeSensorIndex = getPrimaryTrackIndex();
   audioState.stepIndex += 1;
 }
 
@@ -1516,26 +1532,21 @@ function getTrackBeatCount(sensorID) {
 
 function getTrackPlaybackState(sensorID, nowMs = Date.now()) {
   const trackBeatCount = getTrackBeatCount(sensorID);
-  const primaryTrackIndex = getPrimaryTrackIndex();
-  const masterSensorID =
-    primaryTrackIndex >= 0 && primaryTrackIndex < state.sensorIDs.length ? state.sensorIDs[primaryTrackIndex] : sensorID;
-  const masterBeatCount = getTrackBeatCount(masterSensorID);
   const beatDurationMs = getPlaybackStepSeconds() * 1000;
   const elapsedBeats =
     audioState.isPlaying && audioState.playbackStartedAtMs > 0 && beatDurationMs > 0
       ? Math.max(0, (nowMs - audioState.playbackStartedAtMs) / beatDurationMs)
       : 0;
-  const masterBeatFloat = positiveModulo(elapsedBeats, masterBeatCount);
-  const trackFloat = masterBeatCount > 0 ? (masterBeatFloat / masterBeatCount) * trackBeatCount : 0;
-  const wrappedTrackFloat = positiveModulo(trackFloat, trackBeatCount);
-  const pointIndex = Math.floor(wrappedTrackFloat) % trackBeatCount;
-  const headPhase = trackBeatCount <= 0 ? 0 : wrappedTrackFloat / trackBeatCount;
+  const wrappedTrackFloat = positiveModulo(elapsedBeats, trackBeatCount);
+  const centeredTrackFloat = positiveModulo(wrappedTrackFloat + 0.5, trackBeatCount);
+  const pointIndex = trackBeatCount <= 1 ? 0 : Math.floor(centeredTrackFloat) % trackBeatCount;
+  const headPhase = trackBeatCount <= 1 ? wrappedTrackFloat : centeredTrackFloat / trackBeatCount;
 
   return {
     trackBeatCount,
-    masterBeatCount,
+    masterBeatCount: trackBeatCount,
     elapsedBeats,
-    trackFloat: wrappedTrackFloat,
+    trackFloat: centeredTrackFloat,
     pointIndex,
     headPhase: clamp(headPhase, 0, 1),
   };
