@@ -200,3 +200,7 @@ Add a `.htaccess` file in the same folder as `index.html` to prevent the HTML fr
 - 0.29: phone interaction fixes for `Play` and `Time Scrub`; build version moved beside title; larger phone AQI squares with safer 3-digit number spacing
 - 0.30: move to the current p5.js card UI with bottom HUD controls; restore the older drone-style Tone.js playback model inside the new visuals; add ongoing graph point accrual and a moving playback head; add manual play/pause transport control
 - 0.31: add primary/master track selection by clicking the AQ block; add a gray master-track indicator around the AQ value; tie sweep timing to BPM relative to the master track; refine graph spacing and playback-head behavior
+- 0.32: move to dry single-track beep playback on the master lane; add per-lane octave range labels; fix playback indexing crash and asset cache busting
+- 0.33: restore one-channel sound playback; add per-lane note mapping and simultaneous lane triggering experiments; refine per-lane head timing and BPM range down to `30`
+- 0.34: add per-track tempo multipliers and per-role instrument families; remove reverb controls; suppress repeated AQ note retriggers with open-dot feedback; improve phone layout for instrument and tempo labels
+- 0.35: promote current multi-instrument lane build; refine mobile instrument-column spacing; shorten `Sunflower Lab` to `Sun Lab`

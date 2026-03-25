@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Salton Sea Synth</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="styles.0.34.css?v=0.34">
+  <link rel="stylesheet" href="styles.0.35.css?v=0.35">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
-  <script src="app.0.34.js?v=0.34" defer></script>
+  <script src="app.0.35.js?v=0.35" defer></script>
 </head>
 
 <body>
@@ -22,16 +22,10 @@
       </div>
       <div class="hud">
         <label class="hud-field hud-slider-field">
-          <span>Reverb</span>
-          <div class="slider-stack">
-            <input id="reverb-control" type="range" min="0" max="100" value="8" aria-label="Reverb">
-          </div>
-        </label>
-        <label class="hud-field hud-slider-field">
           <span>Speed</span>
           <div class="slider-stack">
-            <input id="bpm-control" type="range" min="30" max="90" value="90" aria-label="Speed">
-            <div class="slider-readout" id="bpm-readout">90 BPM</div>
+            <input id="bpm-control" type="range" min="32" max="96" step="4" value="64" aria-label="Speed">
+            <div class="slider-readout" id="bpm-readout">64 BPM</div>
           </div>
         </label>
       </div>

@@ -10,6 +10,6 @@
   },
   "sensors": {
     "sensorIDs": [961, 621, 897, 1037, 1099, 1475],
-    "rooms": ["BBAC", "LiT Lair", "Zig Zag", "Sunflower Lab", "Vulcan", "Mercury"]
+    "rooms": ["BBAC", "LiT Lair", "Zig Zag", "Sun Lab", "Vulcan", "Mercury"]
   }
 }

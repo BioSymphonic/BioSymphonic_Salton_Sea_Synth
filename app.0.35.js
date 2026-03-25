@@ -33,12 +33,58 @@ const pollingState = {
   inactiveFixedMs: 60 * 1000,
 };
 
+const TRACK_TEMPO_MULTIPLIERS = [0.125, 0.25, 0.5, 1, 1.5, 2, 4];
+const TRACK_ROLE_KEYS = ["low", "midLow", "mid", "high", "top", "air"];
+const TRACK_INSTRUMENT_OPTIONS = {
+  low: [
+    { label: "Pulse Bass", create: () => withVolume(new Tone.MonoSynth({ oscillator: { type: "square" }, filter: { Q: 2, type: "lowpass", rolloff: -24 }, envelope: { attack: 0.01, decay: 0.14, sustain: 0.08, release: 0.18 }, filterEnvelope: { attack: 0.01, decay: 0.12, sustain: 0.05, release: 0.2, baseFrequency: 80, octaves: 2.2 } }).toDestination(), -9) },
+    { label: "Sine Bass", create: () => withVolume(new Tone.Synth({ oscillator: { type: "sine" }, envelope: { attack: 0.01, decay: 0.12, sustain: 0.05, release: 0.18 } }).toDestination(), -10) },
+    { label: "Rubber Bass", create: () => withVolume(new Tone.MonoSynth({ oscillator: { type: "sawtooth" }, filter: { Q: 3, type: "lowpass", rolloff: -24 }, envelope: { attack: 0.008, decay: 0.12, sustain: 0.06, release: 0.16 }, filterEnvelope: { attack: 0.005, decay: 0.1, sustain: 0.02, release: 0.14, baseFrequency: 70, octaves: 3 } }).toDestination(), -12) },
+    { label: "Duo Bass", create: () => withVolume(new Tone.DuoSynth({ vibratoAmount: 0.1, harmonicity: 1.5, voice0: { oscillator: { type: "triangle" }, envelope: { attack: 0.01, decay: 0.08, sustain: 0.08, release: 0.14 } }, voice1: { oscillator: { type: "sine" }, envelope: { attack: 0.02, decay: 0.08, sustain: 0.05, release: 0.16 } } }).toDestination(), -13) },
+    { label: "Sub Thump", create: () => withVolume(new Tone.MonoSynth({ oscillator: { type: "sine" }, envelope: { attack: 0.005, decay: 0.16, sustain: 0.02, release: 0.18 }, filterEnvelope: { attack: 0.005, decay: 0.12, sustain: 0.01, release: 0.15, baseFrequency: 60, octaves: 1.8 } }).toDestination(), -8) },
+  ],
+  midLow: [
+    { label: "Square Beep", create: () => withVolume(new Tone.Synth({ oscillator: { type: "square" }, envelope: { attack: 0.008, decay: 0.09, sustain: 0.02, release: 0.08 } }).toDestination(), -12) },
+    { label: "Triangle Beep", create: () => withVolume(new Tone.Synth({ oscillator: { type: "triangle" }, envelope: { attack: 0.006, decay: 0.08, sustain: 0.02, release: 0.07 } }).toDestination(), -11) },
+    { label: "Combo Organ", create: () => withVolume(new Tone.AMSynth({ harmonicity: 1.5, envelope: { attack: 0.01, decay: 0.1, sustain: 0.06, release: 0.1 }, modulationEnvelope: { attack: 0.01, decay: 0.08, sustain: 0.04, release: 0.08 } }).toDestination(), -13) },
+    { label: "Soft Reed", create: () => withVolume(new Tone.DuoSynth({ harmonicity: 1.25, vibratoAmount: 0.08, voice0: { oscillator: { type: "sawtooth" }, envelope: { attack: 0.008, decay: 0.08, sustain: 0.05, release: 0.08 } }, voice1: { oscillator: { type: "triangle" }, envelope: { attack: 0.01, decay: 0.08, sustain: 0.04, release: 0.08 } } }).toDestination(), -14) },
+    { label: "Wood Pluck", create: () => withVolume(new Tone.PluckSynth({ attackNoise: 0.7, dampening: 1800, resonance: 0.7 }).toDestination(), -10) },
+  ],
+  mid: [
+    { label: "Glass Pluck", create: () => withVolume(new Tone.PluckSynth({ attackNoise: 0.8, dampening: 2800, resonance: 0.75 }).toDestination(), -9) },
+    { label: "Bell Tone", create: () => withVolume(new Tone.FMSynth({ harmonicity: 2.2, modulationIndex: 5, envelope: { attack: 0.005, decay: 0.18, sustain: 0.02, release: 0.12 }, modulationEnvelope: { attack: 0.01, decay: 0.12, sustain: 0.03, release: 0.1 } }).toDestination(), -12) },
+    { label: "Warm Organ", create: () => withVolume(new Tone.AMSynth({ harmonicity: 1.2, envelope: { attack: 0.01, decay: 0.12, sustain: 0.08, release: 0.12 }, modulationEnvelope: { attack: 0.008, decay: 0.08, sustain: 0.05, release: 0.08 } }).toDestination(), -11) },
+    { label: "Nylon Pluck", create: () => withVolume(new Tone.PluckSynth({ attackNoise: 0.6, dampening: 2200, resonance: 0.8 }).toDestination(), -8) },
+    { label: "Soft Bell", create: () => withVolume(new Tone.Synth({ oscillator: { type: "triangle8" }, envelope: { attack: 0.006, decay: 0.14, sustain: 0.03, release: 0.1 } }).toDestination(), -11) },
+  ],
+  high: [
+    { label: "FM Ping", create: () => withVolume(new Tone.FMSynth({ harmonicity: 2.6, modulationIndex: 6, envelope: { attack: 0.006, decay: 0.12, sustain: 0.02, release: 0.1 }, modulationEnvelope: { attack: 0.005, decay: 0.09, sustain: 0.02, release: 0.08 } }).toDestination(), -13) },
+    { label: "Bright Square", create: () => withVolume(new Tone.Synth({ oscillator: { type: "square4" }, envelope: { attack: 0.004, decay: 0.08, sustain: 0.01, release: 0.06 } }).toDestination(), -14) },
+    { label: "Glass Bell", create: () => withVolume(new Tone.FMSynth({ harmonicity: 3.2, modulationIndex: 9, envelope: { attack: 0.004, decay: 0.16, sustain: 0.01, release: 0.12 }, modulationEnvelope: { attack: 0.004, decay: 0.1, sustain: 0.01, release: 0.08 } }).toDestination(), -15) },
+    { label: "Hollow Ping", create: () => withVolume(new Tone.AMSynth({ harmonicity: 2, envelope: { attack: 0.004, decay: 0.08, sustain: 0.01, release: 0.06 }, modulationEnvelope: { attack: 0.004, decay: 0.06, sustain: 0.01, release: 0.05 } }).toDestination(), -15) },
+    { label: "Needle FM", create: () => withVolume(new Tone.FMSynth({ harmonicity: 4, modulationIndex: 12, envelope: { attack: 0.003, decay: 0.07, sustain: 0.01, release: 0.05 }, modulationEnvelope: { attack: 0.003, decay: 0.05, sustain: 0.01, release: 0.04 } }).toDestination(), -16) },
+  ],
+  top: [
+    { label: "AM Chirp", create: () => withVolume(new Tone.AMSynth({ harmonicity: 3, envelope: { attack: 0.005, decay: 0.08, sustain: 0.01, release: 0.06 }, modulation: { type: "triangle" }, modulationEnvelope: { attack: 0.005, decay: 0.06, sustain: 0.01, release: 0.05 } }).toDestination(), -16) },
+    { label: "Needle Tone", create: () => withVolume(new Tone.Synth({ oscillator: { type: "sawtooth8" }, envelope: { attack: 0.003, decay: 0.05, sustain: 0.01, release: 0.04 } }).toDestination(), -18) },
+    { label: "Star Bell", create: () => withVolume(new Tone.FMSynth({ harmonicity: 4, modulationIndex: 10, envelope: { attack: 0.003, decay: 0.12, sustain: 0.01, release: 0.06 }, modulationEnvelope: { attack: 0.003, decay: 0.08, sustain: 0.01, release: 0.05 } }).toDestination(), -17) },
+    { label: "Airy Pluck", create: () => withVolume(new Tone.PluckSynth({ attackNoise: 1.1, dampening: 4200, resonance: 0.85 }).toDestination(), -14) },
+    { label: "Data Blip", create: () => withVolume(new Tone.DuoSynth({ harmonicity: 1.9, vibratoAmount: 0.04, voice0: { oscillator: { type: "triangle" }, envelope: { attack: 0.003, decay: 0.05, sustain: 0.01, release: 0.04 } }, voice1: { oscillator: { type: "square" }, envelope: { attack: 0.003, decay: 0.04, sustain: 0.01, release: 0.04 } } }).toDestination(), -18) },
+  ],
+  air: [
+    { label: "Glass Air", create: () => withVolume(new Tone.FMSynth({ harmonicity: 5, modulationIndex: 7, envelope: { attack: 0.004, decay: 0.14, sustain: 0.01, release: 0.08 }, modulationEnvelope: { attack: 0.004, decay: 0.09, sustain: 0.01, release: 0.06 } }).toDestination(), -17) },
+    { label: "Ice Ping", create: () => withVolume(new Tone.Synth({ oscillator: { type: "triangle16" }, envelope: { attack: 0.003, decay: 0.06, sustain: 0.01, release: 0.05 } }).toDestination(), -18) },
+    { label: "Radio Chirp", create: () => withVolume(new Tone.AMSynth({ harmonicity: 4, envelope: { attack: 0.003, decay: 0.05, sustain: 0.01, release: 0.04 }, modulationEnvelope: { attack: 0.003, decay: 0.04, sustain: 0.01, release: 0.04 } }).toDestination(), -18) },
+    { label: "Crystal Pluck", create: () => withVolume(new Tone.PluckSynth({ attackNoise: 1.2, dampening: 5200, resonance: 0.9 }).toDestination(), -15) },
+    { label: "Shimmer Tone", create: () => withVolume(new Tone.DuoSynth({ harmonicity: 2.4, vibratoAmount: 0.05, voice0: { oscillator: { type: "sine" }, envelope: { attack: 0.004, decay: 0.05, sustain: 0.01, release: 0.04 } }, voice1: { oscillator: { type: "triangle" }, envelope: { attack: 0.004, decay: 0.06, sustain: 0.01, release: 0.05 } } }).toDestination(), -18) },
+  ],
+};
+
 const audioState = {
   isPlaying: false,
   audioUnlocked: false,
   toneReady: false,
-  bpm: 90,
-  reverbWet: 0.08,
+  bpm: 64,
   stepIndex: 0,
   timeScrubMinutes: 4,
   historyWindowMs: 24 * 60 * 60 * 1000,
@@ -49,8 +95,11 @@ const audioState = {
   historyBySensorId: {},
   playheadBySensorId: {},
   lastPlaybackBySensorId: {},
+  lastTriggeredStepBySensorId: {},
   lastDataChangeBySensorId: {},
   channelStateBySensorId: {},
+  trackTempoIndexBySensorId: {},
+  trackInstrumentIndexBySensorId: {},
   activeSensorIndex: -1,
   playbackStartedAtMs: 0,
   lastSafetyDroneAtMs: 0,
@@ -62,18 +111,13 @@ const audioState = {
   audibleThreshold: 0.05,
   accruedDurationEl: null,
   transportButtonEl: null,
-  reverbControlEl: null,
   bpmControlEl: null,
   bpmReadoutEl: null,
   bottomStripEl: null,
   autoplayRetryTimer: null,
-  reverb: null,
+  trackSynthBySensorId: {},
   loopId: null,
   synths: {
-    lead: null,
-    low: null,
-    mid: null,
-    high: null,
     ding: null,
   },
 };
@@ -83,6 +127,8 @@ const visualState = {
   graphPointsBySensorId: {},
   sweepStartedAtMs: 0,
   aqHitboxes: [],
+  instrumentHitboxes: [],
+  tempoHitboxes: [],
   primaryTrackSensorID: null,
   canvasEl: null,
 };
@@ -90,7 +136,6 @@ const visualState = {
 function init() {
   audioState.accruedDurationEl = document.getElementById("accrued-duration");
   audioState.transportButtonEl = document.getElementById("transport-button");
-  audioState.reverbControlEl = document.getElementById("reverb-control");
   audioState.bpmControlEl = document.getElementById("bpm-control");
   audioState.bpmReadoutEl = document.getElementById("bpm-readout");
   audioState.bottomStripEl = document.querySelector(".bottom-strip");
@@ -106,26 +151,23 @@ function setupHudControls() {
     });
   }
 
-  if (audioState.reverbControlEl) {
-    audioState.reverbControlEl.value = `${Math.round(audioState.reverbWet * 100)}`;
-    const applyReverbValue = () => {
-      const value = parseInt(audioState.reverbControlEl.value, 10);
-      audioState.reverbWet = clamp((Number.isFinite(value) ? value : 8) / 100, 0, 1);
-      if (audioState.reverb && audioState.reverb.wet) {
-        audioState.reverb.wet.value = audioState.reverbWet;
-      }
-    };
-    audioState.reverbControlEl.addEventListener("change", applyReverbValue);
-    audioState.reverbControlEl.addEventListener("input", applyReverbValue);
-  }
-
   if (audioState.bpmControlEl) {
     audioState.bpmControlEl.value = `${audioState.bpm}`;
     const applyBpmValue = () => {
       const value = parseInt(audioState.bpmControlEl.value, 10);
-      audioState.bpm = clamp(Number.isFinite(value) ? value : 90, 30, 90);
+      audioState.bpm = snapBpmValue(Number.isFinite(value) ? value : 64);
+      audioState.bpmControlEl.value = `${audioState.bpm}`;
+      if (audioState.isPlaying) {
+        audioState.playbackStartedAtMs = Date.now();
+        for (let i = 0; i < state.sensorIDs.length; i += 1) {
+          audioState.lastTriggeredStepBySensorId[state.sensorIDs[i]] = 0;
+        }
+      }
       updateBpmReadout();
       refreshPlaybackLoop();
+      if (audioState.isPlaying && audioState.audioUnlocked && audioState.toneReady && window.Tone) {
+        playbackTick(Tone.now(), getPlaybackStepSeconds() / 24);
+      }
     };
     audioState.bpmControlEl.addEventListener("change", applyBpmValue);
     audioState.bpmControlEl.addEventListener("input", applyBpmValue);
@@ -226,8 +268,11 @@ function buildSensors() {
     audioState.historyBySensorId[sensorID] = [];
     audioState.playheadBySensorId[sensorID] = 0;
     audioState.lastPlaybackBySensorId[sensorID] = null;
+    audioState.lastTriggeredStepBySensorId[sensorID] = 0;
     audioState.lastDataChangeBySensorId[sensorID] = 0;
     audioState.channelStateBySensorId[sensorID] = { level: 0, target: 0 };
+    audioState.trackTempoIndexBySensorId[sensorID] = 3;
+    audioState.trackInstrumentIndexBySensorId[sensorID] = 0;
     visualState.graphPointsBySensorId[sensorID] = [];
   }
 }
@@ -261,6 +306,9 @@ function startPlayback() {
   audioState.playbackStartedAtMs = Date.now();
   audioState.lastSafetyDroneAtMs = 0;
   audioState.swirlUntilMs = Date.now() + audioState.swirlDurationMs;
+  for (let i = 0; i < state.sensorIDs.length; i += 1) {
+    audioState.lastTriggeredStepBySensorId[state.sensorIDs[i]] = 0;
+  }
   updateAccruedDurationReadout();
   updateTransportButton();
   refreshPlaybackLoop();
@@ -282,10 +330,11 @@ function stopPlayback() {
     Tone.Transport.stop();
   }
 
-  ["lead", "low", "mid", "high"].forEach((name) => {
-    const synth = audioState.synths[name];
+  Object.values(audioState.trackSynthBySensorId).forEach((synth) => {
     if (synth) {
-      synth.releaseAll();
+      if (typeof synth.releaseAll === "function") {
+        synth.releaseAll();
+      }
     }
   });
 }
@@ -350,12 +399,11 @@ function createInstrumentBank() {
   }
   disposeInstrumentBank();
 
-  audioState.synths.lead = new Tone.PolySynth(Tone.Synth, {
-    maxPolyphony: 16,
-    oscillator: { type: "square" },
-    envelope: { attack: 0.008, decay: 0.09, sustain: 0.02, release: 0.08 },
-  }).toDestination();
-  audioState.synths.lead.volume.value = -12;
+  audioState.trackSynthBySensorId = {};
+  for (let i = 0; i < state.sensorIDs.length; i += 1) {
+    const sensorID = state.sensorIDs[i];
+    audioState.trackSynthBySensorId[sensorID] = createTrackInstrumentForSensor(sensorID, i);
+  }
 
   audioState.synths.ding = new Tone.Synth({
     oscillator: { type: "triangle" },
@@ -370,25 +418,24 @@ function disposeInstrumentBank() {
     audioState.loopId = null;
   }
 
-  ["lead", "low", "mid", "high"].forEach((name) => {
-    const synth = audioState.synths[name];
+  Object.keys(audioState.trackSynthBySensorId).forEach((sensorID) => {
+    const synth = audioState.trackSynthBySensorId[sensorID];
     if (!synth) {
       return;
     }
-    synth.releaseAll();
+    if (typeof synth.releaseAll === "function") {
+      synth.releaseAll();
+    }
     synth.dispose();
-    audioState.synths[name] = null;
+    audioState.trackSynthBySensorId[sensorID] = null;
   });
+  audioState.trackSynthBySensorId = {};
 
   if (audioState.synths.ding) {
     audioState.synths.ding.dispose();
     audioState.synths.ding = null;
   }
 
-  if (audioState.reverb) {
-    audioState.reverb.dispose();
-    audioState.reverb = null;
-  }
 }
 
 function refreshPlaybackLoop() {
@@ -408,9 +455,10 @@ function refreshPlaybackLoop() {
   }
 
   Tone.Transport.bpm.value = audioState.bpm;
+  const loopStepSeconds = getPlaybackStepSeconds() / 24;
   audioState.loopId = Tone.Transport.scheduleRepeat((time) => {
-    playbackTick(time, getPlaybackStepSeconds());
-  }, "4n");
+    playbackTick(time, loopStepSeconds);
+  }, loopStepSeconds);
 
   if (Tone.Transport.state !== "started") {
     Tone.Transport.start("+0.05");
@@ -427,12 +475,6 @@ function getScrubStepPoints() {
 
 function playbackTick(time, stepSeconds) {
   if (!hasInstrumentBank()) {
-    return;
-  }
-
-  const synth = audioState.synths.lead;
-  if (!synth) {
-    audioState.stepIndex += 1;
     return;
   }
 
@@ -453,27 +495,42 @@ function playbackTick(time, stepSeconds) {
     }
 
     const playbackState = getTrackPlaybackState(sensorID, now);
+    const triggerStep = playbackState.triggerStep;
+    if (triggerStep <= (audioState.lastTriggeredStepBySensorId[sensorID] || 0)) {
+      continue;
+    }
     const playhead = clamp(playbackState.pointIndex, 0, samples.length - 1);
     const currentSample = samples[playhead] || samples[samples.length - 1];
     if (!currentSample) {
       continue;
     }
+    const isRepeatedDot = isRepeatedSampleValue(samples, playhead);
 
     const currentValue = currentSample.value;
     const midi = getMasterTrackMidi(sensorID, sensorIndex, currentValue);
     const note = Tone.Frequency(midi, "midi").toNote();
     const velocity = 0.18 + clamp((currentValue - state.aqMinVal) / Math.max(1, state.aqMaxVal - state.aqMinVal), 0, 1) * 0.18;
+    const synth = getTrackSynth(sensorID, sensorIndex);
+    if (!synth) {
+      continue;
+    }
 
-    noteEvents.push({ note, velocity });
+    audioState.lastTriggeredStepBySensorId[sensorID] = triggerStep;
     audioState.playheadBySensorId[sensorID] = playhead;
-    pulseSensor(sensorIndex);
     audioState.lastPlaybackBySensorId[sensorID] = {
       ts: now,
-      notes: [note],
+      notes: isRepeatedDot ? [] : [note],
       historyLength: samples.length,
       playhead,
       pointIndex: playhead,
+      suppressed: isRepeatedDot,
     };
+    if (isRepeatedDot) {
+      continue;
+    }
+
+    noteEvents.push({ synth, note, velocity });
+    pulseSensor(sensorIndex);
   }
 
   if (!noteEvents.length) {
@@ -483,7 +540,7 @@ function playbackTick(time, stepSeconds) {
 
   const durationSeconds = Math.min(stepSeconds * 0.55, 0.22);
   for (let i = 0; i < noteEvents.length; i += 1) {
-    synth.triggerAttackRelease(noteEvents[i].note, durationSeconds, time, noteEvents[i].velocity);
+    noteEvents[i].synth.triggerAttackRelease(noteEvents[i].note, durationSeconds, time, noteEvents[i].velocity);
   }
   audioState.activeSensorIndex = getPrimaryTrackIndex();
   audioState.stepIndex += 1;
@@ -611,22 +668,11 @@ function playSwirlCluster(time, stepSeconds, activeIndices) {
 }
 
 function hasInstrumentBank() {
-  return Boolean(
-    audioState.synths.lead || audioState.synths.low || audioState.synths.mid || audioState.synths.high
-  );
+  return Object.values(audioState.trackSynthBySensorId).some(Boolean);
 }
 
 function getSynthForAqi(aqi) {
-  if (!Number.isFinite(aqi)) {
-    return audioState.synths.mid;
-  }
-  if (aqi < 90) {
-    return audioState.synths.low;
-  }
-  if (aqi < 170) {
-    return audioState.synths.mid;
-  }
-  return audioState.synths.high;
+  return null;
 }
 
 function getDesiredAudibleCount(activeCount) {
@@ -1085,6 +1131,124 @@ function getChannelMidiRange(index) {
   return { min, max: min + 12 };
 }
 
+function getTrackRoleKey(sensorIndex) {
+  const safeIndex = clamp(Math.max(0, sensorIndex), 0, TRACK_ROLE_KEYS.length - 1);
+  return TRACK_ROLE_KEYS[safeIndex];
+}
+
+function getTrackInstrumentOptions(sensorIndex) {
+  return TRACK_INSTRUMENT_OPTIONS[getTrackRoleKey(sensorIndex)] || TRACK_INSTRUMENT_OPTIONS.low;
+}
+
+function getTrackInstrumentIndex(sensorID, sensorIndex) {
+  const options = getTrackInstrumentOptions(sensorIndex);
+  const storedIndex = audioState.trackInstrumentIndexBySensorId[sensorID];
+  return clamp(Number.isFinite(storedIndex) ? storedIndex : 0, 0, Math.max(0, options.length - 1));
+}
+
+function getTrackInstrumentConfig(sensorID, sensorIndex) {
+  const options = getTrackInstrumentOptions(sensorIndex);
+  return options[getTrackInstrumentIndex(sensorID, sensorIndex)] || options[0];
+}
+
+function getTrackInstrumentLabel(sensorID, sensorIndex) {
+  return getTrackInstrumentConfig(sensorID, sensorIndex).label;
+}
+
+function getTrackSynth(sensorID, sensorIndex) {
+  const existing = audioState.trackSynthBySensorId[sensorID];
+  if (existing) {
+    return existing;
+  }
+  const created = createTrackInstrumentForSensor(sensorID, sensorIndex);
+  audioState.trackSynthBySensorId[sensorID] = created;
+  return created;
+}
+
+function getTrackTempoMultiplier(sensorID) {
+  const primaryTrackIndex = getPrimaryTrackIndex();
+  const sensorIndex = findSensorIndex(sensorID);
+  if (sensorIndex < 0 || sensorIndex === primaryTrackIndex) {
+    return 1;
+  }
+  const storedIndex = audioState.trackTempoIndexBySensorId[sensorID];
+  const safeIndex = clamp(Number.isFinite(storedIndex) ? storedIndex : 3, 0, TRACK_TEMPO_MULTIPLIERS.length - 1);
+  return TRACK_TEMPO_MULTIPLIERS[safeIndex];
+}
+
+function getTrackTempoLabel(sensorID) {
+  return formatTempoMultiplier(getTrackTempoMultiplier(sensorID));
+}
+
+function formatTempoMultiplier(multiplier) {
+  if (multiplier === 0.125) {
+    return "x1/8";
+  }
+  if (multiplier === 0.25) {
+    return "x1/4";
+  }
+  if (multiplier === 0.5) {
+    return "x1/2";
+  }
+  if (multiplier === 1.5) {
+    return "x1.5";
+  }
+  if (multiplier === 2) {
+    return "x2";
+  }
+  if (multiplier === 4) {
+    return "x4";
+  }
+  return "x1";
+}
+
+function cycleTrackTempo(sensorID) {
+  const currentIndex = clamp(
+    Number.isFinite(audioState.trackTempoIndexBySensorId[sensorID]) ? audioState.trackTempoIndexBySensorId[sensorID] : 3,
+    0,
+    TRACK_TEMPO_MULTIPLIERS.length - 1
+  );
+  audioState.trackTempoIndexBySensorId[sensorID] = (currentIndex + 1) % TRACK_TEMPO_MULTIPLIERS.length;
+  audioState.lastTriggeredStepBySensorId[sensorID] = 0;
+}
+
+function cycleTrackInstrument(sensorID) {
+  const sensorIndex = findSensorIndex(sensorID);
+  if (sensorIndex < 0) {
+    return;
+  }
+  const options = getTrackInstrumentOptions(sensorIndex);
+  const currentIndex = getTrackInstrumentIndex(sensorID, sensorIndex);
+  audioState.trackInstrumentIndexBySensorId[sensorID] = (currentIndex + 1) % options.length;
+  recreateTrackInstrument(sensorID, sensorIndex);
+}
+
+function recreateTrackInstrument(sensorID, sensorIndex) {
+  const existing = audioState.trackSynthBySensorId[sensorID];
+  if (existing) {
+    if (typeof existing.releaseAll === "function") {
+      existing.releaseAll();
+    }
+    existing.dispose();
+  }
+  audioState.trackSynthBySensorId[sensorID] = null;
+  if (audioState.audioUnlocked && audioState.toneReady && window.Tone) {
+    audioState.trackSynthBySensorId[sensorID] = createTrackInstrumentForSensor(sensorID, sensorIndex);
+  }
+}
+
+function createTrackInstrumentForSensor(sensorID, sensorIndex) {
+  const config = getTrackInstrumentConfig(sensorID, sensorIndex);
+  return config && typeof config.create === "function" ? config.create() : null;
+}
+
+function withVolume(synth, value) {
+  if (synth && synth.volume) {
+    synth.volume.value = value;
+  }
+  return synth;
+}
+
 function aqiToVelocity(aqi) {
   const range = Math.max(1, state.aqMaxVal - state.aqMinVal);
   const t = clamp(aqi, state.aqMinVal, state.aqMaxVal) / range;
@@ -1262,6 +1426,8 @@ function drawSensorPanels(p) {
   const titleColor = hexToRgb(state.palette.white);
   const bodyColor = hexToRgb(state.palette.brown);
   visualState.aqHitboxes = [];
+  visualState.instrumentHitboxes = [];
+  visualState.tempoHitboxes = [];
 
   p.fill(titleColor.r, titleColor.g, titleColor.b, 242);
   p.textAlign(p.LEFT, p.TOP);
@@ -1272,6 +1438,15 @@ function drawSensorPanels(p) {
   p.textStyle(p.NORMAL);
   p.fill(state.palette.yellow);
   p.text("by BioSymphonic", marginX + 6, 54);
+  const instrumentColumnOffset = p.width <= 600 ? 114 : 236;
+  const instrumentColumnX = marginX + panelWidth - instrumentColumnOffset;
+  const tempoColumnX = marginX + panelWidth - 18;
+  p.textSize(10);
+  p.fill(titleColor.r, titleColor.g, titleColor.b, 132);
+  p.textAlign(p.LEFT, p.TOP);
+  p.text("Instrument", instrumentColumnX, state.headerHeight - 12);
+  p.textAlign(p.RIGHT, p.TOP);
+  p.text("Tempo", tempoColumnX, state.headerHeight - 12);
 
   const visibleDrawers = state.sensorDrawers
     .map((drawer, index) => ({ drawer, index }))
@@ -1317,13 +1492,43 @@ function drawSensorPanels(p) {
     p.textSize(22);
     p.fill(titleColor.r, titleColor.g, titleColor.b, 240);
     p.text(drawer.locationName, marginX + 122, y + 16);
-    p.textStyle(p.NORMAL);
-    p.textSize(11);
-    p.fill(titleColor.r, titleColor.g, titleColor.b, 150);
-    p.text(getChannelRangeLabel(index), marginX + 122, y + 36);
-
+    const instrumentLabel = getTrackInstrumentLabel(drawer.sensorID, index);
+    const instrumentX = instrumentColumnX;
+    const instrumentY = y + 18;
+    p.textAlign(p.LEFT, p.TOP);
     p.textStyle(p.NORMAL);
     p.textSize(12);
+    p.fill(titleColor.r, titleColor.g, titleColor.b, 156);
+    const instrumentWidth = p.textWidth(instrumentLabel);
+    p.text(instrumentLabel, instrumentX, instrumentY);
+    visualState.instrumentHitboxes.push({
+      sensorID: drawer.sensorID,
+      x: instrumentX - 4,
+      y: instrumentY - 2,
+      width: instrumentWidth + 8,
+      height: 18,
+    });
+    if (index !== primaryTrackIndex) {
+      const tempoLabel = getTrackTempoLabel(drawer.sensorID);
+      const tempoX = marginX + panelWidth - 18;
+      const tempoY = y + 20;
+      p.textAlign(p.RIGHT, p.TOP);
+      p.textStyle(p.NORMAL);
+      p.textSize(12);
+      p.fill(titleColor.r, titleColor.g, titleColor.b, 168);
+      const tempoWidth = p.textWidth(tempoLabel);
+      p.text(tempoLabel, tempoX, tempoY);
+      visualState.tempoHitboxes.push({
+        sensorID: drawer.sensorID,
+        x: tempoX - tempoWidth - 6,
+        y: tempoY - 2,
+        width: tempoWidth + 12,
+        height: 18,
+      });
+    }
+    p.textStyle(p.NORMAL);
+    p.textSize(12);
+    p.textAlign(p.LEFT, p.TOP);
     p.fill(titleColor.r, titleColor.g, titleColor.b, 168);
     drawHistoryWave(p, drawer.sensorID, marginX + 122, y + 42, panelWidth - 156, panelHeight - 52, panelColor);
 
@@ -1337,11 +1542,6 @@ function drawSensorPanels(p) {
 
 function drawRoundedRect(p, x, y, width, height, radius) {
   p.rect(x, y, width, height, radius);
-}
-
-function getChannelRangeLabel(index) {
-  const startOctave = Math.max(0, index);
-  return `Range C${startOctave}-C${startOctave + 1}`;
 }
 
 function drawHistoryWave(p, sensorID, x, y, width, height, panelColor) {
@@ -1396,6 +1596,7 @@ function drawHistoryWave(p, sensorID, x, y, width, height, panelColor) {
   p.noStroke();
   for (let i = 0; i < samples.length; i += 1) {
     const glowAmount = getMarkerGlowAmount(i, playbackState.trackFloat, samples.length);
+    const isRepeatedDot = isRepeatedSampleValue(samples, i);
     const px = x + markerFractions[i] * width;
     const py = dataBottom - mapRange(samples[i].value, minValue, maxValue, 0, dataBottom - dataTop);
     if (glowAmount > 0) {
@@ -1404,8 +1605,16 @@ function drawHistoryWave(p, sensorID, x, y, width, height, panelColor) {
     } else {
       p.drawingContext.shadowBlur = 0;
     }
-    p.fill(panelColor.r, panelColor.g, panelColor.b, 180 + glowAmount * 75);
-    p.circle(px, py, 8 + glowAmount * 4);
+    if (isRepeatedDot) {
+      p.noFill();
+      p.stroke(214, 208, 187, 120 + glowAmount * 70);
+      p.strokeWeight(1.5 + glowAmount * 1.2);
+      p.circle(px, py, 8 + glowAmount * 4);
+      p.noStroke();
+    } else {
+      p.fill(panelColor.r, panelColor.g, panelColor.b, 180 + glowAmount * 75);
+      p.circle(px, py, 8 + glowAmount * 4);
+    }
   }
   p.drawingContext.shadowBlur = 0;
 
@@ -1454,6 +1663,21 @@ function getWavePoints(samples, x, width, dataTop, dataBottom, minValue, maxValu
     dataBottom - mapRange(samples[samples.length - 1].value, minValue, maxValue, 0, dataBottom - dataTop);
   points.push({ x: x + width, y: lastY });
   return points;
+}
+
+function isRepeatedSampleValue(samples, index) {
+  if (!samples.length || index < 0 || index >= samples.length) {
+    return false;
+  }
+  if (samples.length <= 1 || index === 0) {
+    return false;
+  }
+  const currentSample = samples[index];
+  const previousSample = samples[index - 1];
+  if (!currentSample || !previousSample) {
+    return false;
+  }
+  return currentSample.value === previousSample.value;
 }
 
 function getSweepHeadState(wavePoints, sweepPhase) {
@@ -1537,18 +1761,24 @@ function getTrackPlaybackState(sensorID, nowMs = Date.now()) {
     audioState.isPlaying && audioState.playbackStartedAtMs > 0 && beatDurationMs > 0
       ? Math.max(0, (nowMs - audioState.playbackStartedAtMs) / beatDurationMs)
       : 0;
-  const wrappedTrackFloat = positiveModulo(elapsedBeats, trackBeatCount);
+  const tempoMultiplier = getTrackTempoMultiplier(sensorID);
+  const elapsedTrackBeats = elapsedBeats * tempoMultiplier;
+  const wrappedTrackFloat = positiveModulo(elapsedTrackBeats, trackBeatCount);
   const centeredTrackFloat = positiveModulo(wrappedTrackFloat + 0.5, trackBeatCount);
   const pointIndex = trackBeatCount <= 1 ? 0 : Math.floor(centeredTrackFloat) % trackBeatCount;
   const headPhase = trackBeatCount <= 1 ? wrappedTrackFloat : centeredTrackFloat / trackBeatCount;
+  const triggerStep = Math.floor(elapsedTrackBeats + 0.5);
 
   return {
     trackBeatCount,
     masterBeatCount: trackBeatCount,
     elapsedBeats,
+    elapsedTrackBeats,
+    tempoMultiplier,
     trackFloat: centeredTrackFloat,
     pointIndex,
     headPhase: clamp(headPhase, 0, 1),
+    triggerStep,
   };
 }
 
@@ -1574,6 +1804,30 @@ function getPrimaryTrackIndex() {
 }
 
 function handleCanvasPress(x, y) {
+  for (let i = 0; i < visualState.instrumentHitboxes.length; i += 1) {
+    const hitbox = visualState.instrumentHitboxes[i];
+    if (
+      x >= hitbox.x &&
+      x <= hitbox.x + hitbox.width &&
+      y >= hitbox.y &&
+      y <= hitbox.y + hitbox.height
+    ) {
+      cycleTrackInstrument(hitbox.sensorID);
+      return true;
+    }
+  }
+  for (let i = 0; i < visualState.tempoHitboxes.length; i += 1) {
+    const hitbox = visualState.tempoHitboxes[i];
+    if (
+      x >= hitbox.x &&
+      x <= hitbox.x + hitbox.width &&
+      y >= hitbox.y &&
+      y <= hitbox.y + hitbox.height
+    ) {
+      cycleTrackTempo(hitbox.sensorID);
+      return true;
+    }
+  }
   for (let i = 0; i < visualState.aqHitboxes.length; i += 1) {
     const hitbox = visualState.aqHitboxes[i];
     if (
@@ -1587,6 +1841,11 @@ function handleCanvasPress(x, y) {
     }
   }
   return false;
+}
+
+function snapBpmValue(value) {
+  const clamped = clamp(Number.isFinite(value) ? value : 64, 32, 96);
+  return 32 + Math.round((clamped - 32) / 4) * 4;
 }
 
 function drawEnergyBursts(p) {
