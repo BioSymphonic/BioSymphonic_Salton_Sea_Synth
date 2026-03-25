@@ -46,9 +46,12 @@ body {
   pointer-events: auto;
 }
 
-.transport-row {
+.top-row {
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .hud {
@@ -197,11 +200,16 @@ body {
     padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
   }
 
+  .top-row {
+    justify-content: stretch;
+  }
+
   .hud {
     grid-template-columns: 1fr;
     gap: 10px;
   }
 
+  .transport-button,
   .hud-field,
   .footer-readout {
     justify-self: stretch;

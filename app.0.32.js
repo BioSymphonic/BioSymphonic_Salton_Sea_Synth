@@ -122,7 +122,7 @@ function setupHudControls() {
     audioState.bpmControlEl.value = `${audioState.bpm}`;
     const applyBpmValue = () => {
       const value = parseInt(audioState.bpmControlEl.value, 10);
-      audioState.bpm = clamp(Number.isFinite(value) ? value : 90, 60, 180);
+      audioState.bpm = clamp(Number.isFinite(value) ? value : 90, 30, 180);
       updateBpmReadout();
       refreshPlaybackLoop();
     };
@@ -430,10 +430,10 @@ function refreshPlaybackLoop() {
     audioState.loopId = null;
   }
 
-  const stepSeconds = getPlaybackStepSeconds();
+  Tone.Transport.bpm.value = audioState.bpm;
   audioState.loopId = Tone.Transport.scheduleRepeat((time) => {
-    playbackTick(time, stepSeconds);
-  }, stepSeconds);
+    playbackTick(time, getPlaybackStepSeconds());
+  }, "4n");
 
   if (Tone.Transport.state !== "started") {
     Tone.Transport.start("+0.05");
@@ -441,7 +441,7 @@ function refreshPlaybackLoop() {
 }
 
 function getPlaybackStepSeconds() {
-  return clamp((60 / Math.max(60, audioState.bpm)) * 8, 2.5, 8);
+  return 60 / Math.max(1, audioState.bpm);
 }
 
 function getScrubStepPoints() {
@@ -455,13 +455,13 @@ function playbackTick(time, stepSeconds) {
 
   const activeIndices = getActiveSensorIndices().filter((index) => {
     const sensorID = state.sensorIDs[index];
-    return getWindowedHistory(sensorID).length > 0;
+    return getPlaybackSamples(sensorID).length > 0;
   });
 
   const fallbackIndices = [];
   if (!activeIndices.length) {
     for (let i = 0; i < state.sensorIDs.length; i += 1) {
-      if (getWindowedHistory(state.sensorIDs[i]).length > 0) {
+      if (getPlaybackSamples(state.sensorIDs[i]).length > 0) {
         fallbackIndices.push(i);
       }
     }
@@ -498,45 +498,59 @@ function playbackTick(time, stepSeconds) {
   const activeSlot = audioState.stepIndex % preferredCount;
   const sensorIndex = rankedIndices[activeSlot];
   const sensorID = state.sensorIDs[sensorIndex];
-  const history = getWindowedHistory(sensorID);
+  const samples = getPlaybackSamples(sensorID);
 
-  if (!history.length) {
+  if (!samples.length) {
     audioState.stepIndex += 1;
     return;
   }
 
-  let playhead = audioState.playheadBySensorId[sensorID] || 0;
-  playhead %= history.length;
+  const playbackState = getTrackPlaybackState(sensorID);
+  const playhead = clamp(playbackState.pointIndex, 0, samples.length - 1);
 
   const offsets = getCompositionOffsets(sensorID);
   const midiValues = [];
 
   for (let i = 0; i < offsets.length; i += 1) {
-    const historyIndex = (playhead - offsets[i] + history.length) % history.length;
-    midiValues.push(aqiToMidi(history[historyIndex].value, sensorIndex));
+    const sampleIndex = positiveModulo(playhead - offsets[i], samples.length);
+    const sample = samples[sampleIndex];
+    if (!sample) {
+      continue;
+    }
+    midiValues.push(aqiToMidi(sample.value, sensorIndex));
+  }
+
+  if (!midiValues.length) {
+    audioState.stepIndex += 1;
+    return;
   }
 
   const uniqueMidi = Array.from(new Set(ensureVoiceCount(midiValues, offsets.length).map((midi) => Math.round(midi))));
   const uniqueNotes = uniqueMidi.map((midi) => Tone.Frequency(midi, "midi").toNote());
-  const currentValue = history[playhead].value;
+  const currentSample = samples[playhead] || samples[samples.length - 1];
+  if (!currentSample) {
+    audioState.stepIndex += 1;
+    return;
+  }
+  const currentValue = currentSample.value;
   const channelLevel = getChannelLevel(sensorID);
   const velocity = Math.min(0.58, aqiToVelocity(currentValue) * channelLevel);
-  const durationSeconds = Math.max(2.5, stepSeconds * 1.8);
+  const durationSeconds = Math.max(1.4, stepSeconds * 1.8);
   const synth = getSynthForAqi(currentValue);
 
   if (synth) {
     synth.triggerAttackRelease(uniqueNotes, durationSeconds, time, velocity);
   }
 
-  audioState.playheadBySensorId[sensorID] = (playhead + getScrubStepPoints()) % history.length;
+  audioState.playheadBySensorId[sensorID] = playhead;
   audioState.activeSensorIndex = sensorIndex;
   pulseSensor(sensorIndex);
   audioState.lastPlaybackBySensorId[sensorID] = {
     ts: Date.now(),
     notes: uniqueNotes,
-    historyLength: history.length,
+    historyLength: samples.length,
     playhead,
-    pointIndex: getPointIndexForHistory(playhead, history.length),
+    pointIndex: playhead,
   };
   audioState.stepIndex += 1;
 }
@@ -568,14 +582,15 @@ function playSafetyDrone(time, stepSeconds, preferredIndices) {
   pulseSensor(seed.sensorIndex);
 
   const sensorID = state.sensorIDs[seed.sensorIndex];
-  const historyLength = getWindowedHistory(sensorID).length;
-  const playhead = audioState.playheadBySensorId[sensorID] || 0;
+  const samples = getPlaybackSamples(sensorID);
+  const playbackState = getTrackPlaybackState(sensorID);
+  const playhead = playbackState.pointIndex;
   audioState.lastPlaybackBySensorId[sensorID] = {
     ts: now,
     notes: chord,
-    historyLength,
+    historyLength: samples.length,
     playhead,
-    pointIndex: getPointIndexForHistory(playhead, historyLength),
+    pointIndex: playhead,
   };
   audioState.lastSafetyDroneAtMs = now;
 }
@@ -615,15 +630,17 @@ function playSwirlCluster(time, stepSeconds, activeIndices) {
   for (let i = 0; i < activeIndices.length; i += 1) {
     const sensorIndex = activeIndices[i];
     const sensorID = state.sensorIDs[sensorIndex];
-    const history = getWindowedHistory(sensorID);
-    if (!history.length) {
+    const samples = getPlaybackSamples(sensorID);
+    if (!samples.length) {
       continue;
     }
 
-    let playhead = audioState.playheadBySensorId[sensorID] || 0;
-    playhead %= history.length;
-
-    const reading = history[playhead];
+    const playbackState = getTrackPlaybackState(sensorID);
+    const playhead = clamp(playbackState.pointIndex, 0, samples.length - 1);
+    const reading = samples[playhead];
+    if (!reading) {
+      continue;
+    }
     const midi = Math.round(aqiToMidi(reading.value, sensorIndex));
     activeEntries.push({
       note: Tone.Frequency(midi, "midi").toNote(),
@@ -631,16 +648,16 @@ function playSwirlCluster(time, stepSeconds, activeIndices) {
       sensorIndex,
       sensorID,
       playhead,
-      historyLength: history.length,
+      historyLength: samples.length,
     });
 
-    audioState.playheadBySensorId[sensorID] = (playhead + getScrubStepPoints()) % history.length;
+    audioState.playheadBySensorId[sensorID] = playhead;
     audioState.lastPlaybackBySensorId[sensorID] = {
       ts: now,
       notes: [Tone.Frequency(midi, "midi").toNote()],
-      historyLength: history.length,
+      historyLength: samples.length,
       playhead,
-      pointIndex: getPointIndexForHistory(playhead, history.length),
+      pointIndex: playhead,
     };
     pulseSensor(sensorIndex);
   }
@@ -1004,6 +1021,12 @@ function getDisplaySamples(sensorID, fallbackValue) {
   return [{ value: Number.isFinite(fallbackValue) ? fallbackValue : 0 }];
 }
 
+function getPlaybackSamples(sensorID) {
+  const sensorIndex = findSensorIndex(sensorID);
+  const fallbackValue = sensorIndex >= 0 ? state.sensorDrawers[sensorIndex].aqi : 0;
+  return getDisplaySamples(sensorID, fallbackValue);
+}
+
 function getActiveSensorIndices() {
   const active = [];
   for (let i = 0; i < state.sensorDrawers.length; i += 1) {
@@ -1044,7 +1067,7 @@ function updateAccruedDurationReadout() {
   if (!audioState.accruedDurationEl) {
     return;
   }
-  audioState.accruedDurationEl.textContent = `Accrued Duration: ${formatDurationShort(getAccruedDurationMs())}`;
+  audioState.accruedDurationEl.textContent = `Time: ${formatDurationShort(getAccruedDurationMs())}`;
 }
 
 function updateBpmReadout() {
@@ -1109,6 +1132,13 @@ function mapRange(value, inMin, inMax, outMin, outMax) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function positiveModulo(value, modulus) {
+  if (!Number.isFinite(modulus) || modulus <= 0) {
+    return 0;
+  }
+  return ((value % modulus) + modulus) % modulus;
 }
 
 function hexToRgb(hex) {
@@ -1311,7 +1341,7 @@ function drawSensorPanels(p) {
     p.textAlign(p.CENTER, p.CENTER);
     p.textSize(drawer.aqi >= 100 ? 26 : 30);
     p.textStyle(p.BOLD);
-    p.text(`${Math.round(drawer.aqi)}`, marginX + 56, y + panelHeight * 0.5);
+    p.text(`${Math.round(drawer.aqi)}`, marginX + 52, y + 12 + (panelHeight - 24) * 0.5);
 
     p.textAlign(p.LEFT, p.TOP);
     p.textStyle(p.BOLD);
@@ -1337,7 +1367,7 @@ function drawRoundedRect(p, x, y, width, height, radius) {
 }
 
 function drawHistoryWave(p, sensorID, x, y, width, height, panelColor) {
-  const samples = getDisplaySamples(sensorID, 0);
+  const samples = getPlaybackSamples(sensorID);
   const boxHeight = Math.max(24, height);
   const waveTop = y;
   const waveBottom = y + boxHeight;
@@ -1382,25 +1412,31 @@ function drawHistoryWave(p, sensorID, x, y, width, height, panelColor) {
   }
   p.endShape();
 
-  const headPhase = getVisualSweepPhase(sensorID, findSensorIndex(sensorID), samples.length);
-  const headState = getSweepHeadState(wavePoints, headPhase);
+  const playbackState = getTrackPlaybackState(sensorID);
+  const headState = getSweepHeadState(wavePoints, playbackState.headPhase);
 
   p.noStroke();
-  p.fill(236, 229, 196, 245);
   for (let i = 0; i < samples.length; i += 1) {
+    const glowAmount = getMarkerGlowAmount(i, playbackState.trackFloat, samples.length);
     const px = x + markerFractions[i] * width;
     const py = dataBottom - mapRange(samples[i].value, minValue, maxValue, 0, dataBottom - dataTop);
-    p.circle(px, py, 8);
+    if (glowAmount > 0) {
+      p.drawingContext.shadowBlur = 10 + glowAmount * 18;
+      p.drawingContext.shadowColor = `rgba(${panelColor.r}, ${panelColor.g}, ${panelColor.b}, ${0.25 + glowAmount * 0.5})`;
+    } else {
+      p.drawingContext.shadowBlur = 0;
+    }
+    p.fill(panelColor.r, panelColor.g, panelColor.b, 180 + glowAmount * 75);
+    p.circle(px, py, 8 + glowAmount * 4);
   }
+  p.drawingContext.shadowBlur = 0;
 
   p.push();
   p.translate(headState.x, headState.y);
   p.rectMode(p.CENTER);
   p.noStroke();
-  p.fill(232, 224, 178, 235);
+  p.fill(panelColor.r, panelColor.g, panelColor.b, 204);
   p.rect(0, 0, 12, 20, 3);
-  p.fill(246, 239, 216, 180);
-  p.rect(0, -4, 6, 6, 2);
   p.pop();
 
   p.drawingContext.restore();
@@ -1509,15 +1545,45 @@ function getPlaybackPointIndex(playbackData, sampleCount) {
 }
 
 function getVisualSweepPhase(sensorID, sensorIndex, sampleCount) {
+  return getTrackPlaybackState(sensorID).headPhase;
+}
+
+function getTrackBeatCount(sensorID) {
+  return Math.max(1, getPlaybackSamples(sensorID).length);
+}
+
+function getTrackPlaybackState(sensorID, nowMs = Date.now()) {
+  const trackBeatCount = getTrackBeatCount(sensorID);
   const primaryTrackIndex = getPrimaryTrackIndex();
-  const pointFactor = clamp(sampleCount / 18, 0.9, 2.6);
-  const beatsPerCycle = 16;
-  const masterCycleMs = (60000 / Math.max(60, audioState.bpm)) * beatsPerCycle * pointFactor;
-  const relativeOffset = Math.max(0, sensorIndex) - Math.max(0, primaryTrackIndex);
-  const sensorFactor = 1 + Math.abs(relativeOffset) * 0.18;
-  const cycleMs = masterCycleMs * sensorFactor;
-  const elapsedMs = Math.max(0, Date.now() - visualState.sweepStartedAtMs + Math.max(0, sensorIndex) * 350);
-  return (elapsedMs % cycleMs) / cycleMs;
+  const masterSensorID =
+    primaryTrackIndex >= 0 && primaryTrackIndex < state.sensorIDs.length ? state.sensorIDs[primaryTrackIndex] : sensorID;
+  const masterBeatCount = getTrackBeatCount(masterSensorID);
+  const beatDurationMs = getPlaybackStepSeconds() * 1000;
+  const elapsedBeats =
+    audioState.isPlaying && audioState.playbackStartedAtMs > 0 && beatDurationMs > 0
+      ? Math.max(0, (nowMs - audioState.playbackStartedAtMs) / beatDurationMs)
+      : 0;
+  const masterBeatFloat = positiveModulo(elapsedBeats, masterBeatCount);
+  const trackFloat = masterBeatCount > 0 ? (masterBeatFloat / masterBeatCount) * trackBeatCount : 0;
+  const wrappedTrackFloat = positiveModulo(trackFloat, trackBeatCount);
+  const pointIndex = Math.floor(wrappedTrackFloat) % trackBeatCount;
+  const headPhase = trackBeatCount <= 0 ? 0 : wrappedTrackFloat / trackBeatCount;
+
+  return {
+    trackBeatCount,
+    masterBeatCount,
+    elapsedBeats,
+    trackFloat: wrappedTrackFloat,
+    pointIndex,
+    headPhase: clamp(headPhase, 0, 1),
+  };
+}
+
+function getMarkerGlowAmount(markerIndex, trackFloat, sampleCount) {
+  const markerCenter = markerIndex + 0.5;
+  const directDistance = Math.abs(trackFloat - markerCenter);
+  const wrappedDistance = Math.min(directDistance, sampleCount - directDistance);
+  return clamp(1 - wrappedDistance / 0.22, 0, 1);
 }
 
 function getPrimaryTrackIndex() {
