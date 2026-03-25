@@ -70,6 +70,7 @@ const audioState = {
   reverb: null,
   loopId: null,
   synths: {
+    lead: null,
     low: null,
     mid: null,
     high: null,
@@ -281,7 +282,7 @@ function stopPlayback() {
     Tone.Transport.stop();
   }
 
-  ["low", "mid", "high"].forEach((name) => {
+  ["lead", "low", "mid", "high"].forEach((name) => {
     const synth = audioState.synths[name];
     if (synth) {
       synth.releaseAll();
@@ -349,36 +350,12 @@ function createInstrumentBank() {
   }
   disposeInstrumentBank();
 
-  audioState.reverb = new Tone.Reverb({
-    decay: 9,
-    preDelay: 0.04,
-    wet: audioState.reverbWet,
+  audioState.synths.lead = new Tone.PolySynth(Tone.Synth, {
+    maxPolyphony: 16,
+    oscillator: { type: "square" },
+    envelope: { attack: 0.008, decay: 0.09, sustain: 0.02, release: 0.08 },
   }).toDestination();
-
-  audioState.synths.low = new Tone.PolySynth(Tone.Synth, {
-    maxPolyphony: 12,
-    oscillator: { type: "sine" },
-    envelope: { attack: 1.4, decay: 0.8, sustain: 0.9, release: 4.8 },
-  }).connect(audioState.reverb);
-  audioState.synths.low.volume.value = -12;
-
-  audioState.synths.mid = new Tone.PolySynth(Tone.AMSynth, {
-    maxPolyphony: 10,
-    harmonicity: 1.5,
-    envelope: { attack: 1.1, decay: 0.7, sustain: 0.82, release: 3.8 },
-    modulation: { type: "sine" },
-    modulationEnvelope: { attack: 0.6, decay: 0.5, sustain: 0.6, release: 1.8 },
-  }).connect(audioState.reverb);
-  audioState.synths.mid.volume.value = -13;
-
-  audioState.synths.high = new Tone.PolySynth(Tone.FMSynth, {
-    maxPolyphony: 8,
-    harmonicity: 2.2,
-    modulationIndex: 8,
-    envelope: { attack: 0.7, decay: 0.5, sustain: 0.72, release: 2.8 },
-    modulationEnvelope: { attack: 0.25, decay: 0.35, sustain: 0.45, release: 1.2 },
-  }).connect(audioState.reverb);
-  audioState.synths.high.volume.value = -14;
+  audioState.synths.lead.volume.value = -12;
 
   audioState.synths.ding = new Tone.Synth({
     oscillator: { type: "triangle" },
@@ -393,7 +370,7 @@ function disposeInstrumentBank() {
     audioState.loopId = null;
   }
 
-  ["low", "mid", "high"].forEach((name) => {
+  ["lead", "low", "mid", "high"].forEach((name) => {
     const synth = audioState.synths[name];
     if (!synth) {
       return;
@@ -453,101 +430,42 @@ function playbackTick(time, stepSeconds) {
     return;
   }
 
-  const activeIndices = getActiveSensorIndices().filter((index) => {
-    const sensorID = state.sensorIDs[index];
-    return getPlaybackSamples(sensorID).length > 0;
-  });
-
-  const fallbackIndices = [];
-  if (!activeIndices.length) {
-    for (let i = 0; i < state.sensorIDs.length; i += 1) {
-      if (getPlaybackSamples(state.sensorIDs[i]).length > 0) {
-        fallbackIndices.push(i);
-      }
-    }
-  }
-
-  const candidateIndices = activeIndices.length ? activeIndices : fallbackIndices;
-  if (!candidateIndices.length) {
-    playSafetyDrone(time, stepSeconds);
-    return;
-  }
-
-  updateAudibleMixTargets(candidateIndices);
-  updateAllChannelLevels(stepSeconds);
-
-  const allowStale = activeIndices.length === 0;
-  let audibleIndices = candidateIndices.filter((index) =>
-    isSensorAudible(state.sensorIDs[index], index, allowStale)
-  );
-
-  playSafetyDrone(time, stepSeconds, candidateIndices);
-
-  if (!audibleIndices.length) {
-    audibleIndices = candidateIndices.slice();
-  }
-
-  const rankedIndices = rankSensorIndicesByChange(audibleIndices);
-  if (Date.now() < audioState.swirlUntilMs) {
-    playSwirlCluster(time, stepSeconds, rankedIndices);
+  const sensorIndex = getPrimaryTrackIndex();
+  if (sensorIndex < 0 || sensorIndex >= state.sensorIDs.length) {
     audioState.stepIndex += 1;
     return;
   }
-
-  const preferredCount = Math.max(1, Math.min(audioState.preferredTopCount, rankedIndices.length));
-  const activeSlot = audioState.stepIndex % preferredCount;
-  const sensorIndex = rankedIndices[activeSlot];
   const sensorID = state.sensorIDs[sensorIndex];
   const samples = getPlaybackSamples(sensorID);
-
   if (!samples.length) {
     audioState.stepIndex += 1;
     return;
   }
-
   const playbackState = getTrackPlaybackState(sensorID);
   const playhead = clamp(playbackState.pointIndex, 0, samples.length - 1);
-
-  const offsets = getCompositionOffsets(sensorID);
-  const midiValues = [];
-
-  for (let i = 0; i < offsets.length; i += 1) {
-    const sampleIndex = positiveModulo(playhead - offsets[i], samples.length);
-    const sample = samples[sampleIndex];
-    if (!sample) {
-      continue;
-    }
-    midiValues.push(aqiToMidi(sample.value, sensorIndex));
-  }
-
-  if (!midiValues.length) {
-    audioState.stepIndex += 1;
-    return;
-  }
-
-  const uniqueMidi = Array.from(new Set(ensureVoiceCount(midiValues, offsets.length).map((midi) => Math.round(midi))));
-  const uniqueNotes = uniqueMidi.map((midi) => Tone.Frequency(midi, "midi").toNote());
   const currentSample = samples[playhead] || samples[samples.length - 1];
   if (!currentSample) {
     audioState.stepIndex += 1;
     return;
   }
-  const currentValue = currentSample.value;
-  const channelLevel = getChannelLevel(sensorID);
-  const velocity = Math.min(0.58, aqiToVelocity(currentValue) * channelLevel);
-  const durationSeconds = Math.max(1.4, stepSeconds * 1.8);
-  const synth = getSynthForAqi(currentValue);
-
-  if (synth) {
-    synth.triggerAttackRelease(uniqueNotes, durationSeconds, time, velocity);
+  const synth = audioState.synths.lead;
+  if (!synth) {
+    audioState.stepIndex += 1;
+    return;
   }
+  const currentValue = currentSample.value;
+  const midi = getMasterTrackMidi(sensorID, sensorIndex, currentValue);
+  const note = Tone.Frequency(midi, "midi").toNote();
+  const velocity = 0.18 + clamp((currentValue - state.aqMinVal) / Math.max(1, state.aqMaxVal - state.aqMinVal), 0, 1) * 0.18;
+  const durationSeconds = Math.min(stepSeconds * 0.55, 0.22);
+  synth.triggerAttackRelease(note, durationSeconds, time, velocity);
 
   audioState.playheadBySensorId[sensorID] = playhead;
   audioState.activeSensorIndex = sensorIndex;
   pulseSensor(sensorIndex);
   audioState.lastPlaybackBySensorId[sensorID] = {
     ts: Date.now(),
-    notes: uniqueNotes,
+    notes: [note],
     historyLength: samples.length,
     playhead,
     pointIndex: playhead,
@@ -677,7 +595,9 @@ function playSwirlCluster(time, stepSeconds, activeIndices) {
 }
 
 function hasInstrumentBank() {
-  return Boolean(audioState.synths.low || audioState.synths.mid || audioState.synths.high);
+  return Boolean(
+    audioState.synths.lead || audioState.synths.low || audioState.synths.mid || audioState.synths.high
+  );
 }
 
 function getSynthForAqi(aqi) {
@@ -1116,6 +1036,39 @@ function aqiToMidi(aqi, sensorIndex) {
   return clamp(midi, 24, 96);
 }
 
+function getMasterTrackMidi(sensorID, sensorIndex, value) {
+  const samples = getPlaybackSamples(sensorID);
+  let minValue = Number.POSITIVE_INFINITY;
+  let maxValue = Number.NEGATIVE_INFINITY;
+
+  for (let i = 0; i < samples.length; i += 1) {
+    const sampleValue = samples[i] ? samples[i].value : NaN;
+    if (!Number.isFinite(sampleValue)) {
+      continue;
+    }
+    minValue = Math.min(minValue, sampleValue);
+    maxValue = Math.max(maxValue, sampleValue);
+  }
+
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    minValue = state.aqMinVal;
+    maxValue = state.aqMaxVal;
+  }
+  if (minValue === maxValue) {
+    minValue -= 1;
+    maxValue += 1;
+  }
+
+  const range = getChannelMidiRange(sensorIndex);
+  return Math.round(clamp(mapRange(value, minValue, maxValue, range.min, range.max), range.min, range.max));
+}
+
+function getChannelMidiRange(index) {
+  const safeIndex = Math.max(0, index);
+  const min = 12 + safeIndex * 12;
+  return { min, max: min + 12 };
+}
+
 function aqiToVelocity(aqi) {
   const range = Math.max(1, state.aqMaxVal - state.aqMinVal);
   const t = clamp(aqi, state.aqMinVal, state.aqMaxVal) / range;
@@ -1348,6 +1301,10 @@ function drawSensorPanels(p) {
     p.textSize(22);
     p.fill(titleColor.r, titleColor.g, titleColor.b, 240);
     p.text(drawer.locationName, marginX + 122, y + 16);
+    p.textStyle(p.NORMAL);
+    p.textSize(11);
+    p.fill(titleColor.r, titleColor.g, titleColor.b, 150);
+    p.text(getChannelRangeLabel(index), marginX + 122, y + 36);
 
     p.textStyle(p.NORMAL);
     p.textSize(12);
@@ -1364,6 +1321,11 @@ function drawSensorPanels(p) {
 
 function drawRoundedRect(p, x, y, width, height, radius) {
   p.rect(x, y, width, height, radius);
+}
+
+function getChannelRangeLabel(index) {
+  const startOctave = Math.max(0, index);
+  return `Range C${startOctave}-C${startOctave + 1}`;
 }
 
 function drawHistoryWave(p, sensorID, x, y, width, height, panelColor) {
